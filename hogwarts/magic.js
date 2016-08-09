@@ -1,15 +1,44 @@
-function assocIn(o, path, v) {
-  return path.reduce((oo, k, i) => {
-    if (i === path.length - 1) {
-      oo[k] = v
-      return o
+const lineSeparator = '==='
+const subStartDelimiter = 'Rp'
+const subEndDelimiter = 'Qt'
+const readMode = 'r'
+
+function assocIn(obj, path, value) {
+  return path.reduce((branch, k, index) => {
+    if (index === path.length - 1 && value) {
+      branch[k] = value
+      return obj
     }
-    return oo[k]
-  }, o)
+    return branch[k]
+  }, obj)
 }
 
-function magic(o, r, m = 'r') {
+function indexToCode(index) {
+  const loc = ['aQ', 'bC', 'cT', 'dR', 'eQ', 'fG', 'gs', 'h2', 'i4', 'j6']
+  return subStartDelimiter + (index + '').split('').reduce((r, c) => r + loc[c], '') + subEndDelimiter
+}
+
+function magic(o, r, h, m = readMode) {
   let i = -1
+  let cacheIndex = 1000
+
+  function w(v) {
+    if (typeof v !== 'string') return v
+
+    if (m === readMode) {
+      return ['<.+?>', '\{.+?\}', '\%.\%?', '\n'].reduce((v, pattern) => {
+        return v.replace(new RegExp(pattern, 'g'), (match) => {
+          const index = indexToCode(cacheIndex++)
+          h[index] = match
+          return index
+        })
+      }, v)
+    }
+
+    return v.replace(new RegExp(subStartDelimiter + '[a-zA-Z0-9]+?' + subEndDelimiter, 'g'), (code) => {
+      return h[code + '']
+    })
+  }
 
   function $(oo, p = []) {
     if (typeof oo === 'object') {
@@ -18,10 +47,10 @@ function magic(o, r, m = 'r') {
       })
     } else {
       i = i + 1
-      if (m === 'r') {
-        r.push(oo.replace(/\n/g, ' '))
+      if (m === readMode) {
+        r.push(w(oo))
       } else {
-        assocIn(o, p, r[i])
+        assocIn(o, p, w(r[i]))
       }
     }
   }
@@ -29,40 +58,39 @@ function magic(o, r, m = 'r') {
   $(o)
 }
 
-function s(l) {
-  return l
-    .replace(/<[ ]*\/[ ]*([a-zA-Z0-9]+)[ ]*>/g, (_, t) => '</' + t.toLowerCase() + '>')
-    .replace(/<([a-zA-Z0-9]+)[ ]*([a-z]+[ ]*\=[ ]*\'.+?\')?>/g, (_, t, b = '') => {
-      return '<' + t.toLowerCase() + (b === '' ? '' : ' ') + b.replace(/\'/g, '"').replace(/ = /g, '=') + '>'
-    })
-    .replace(/% ([a-zA-Z])/g, '%$1')
-}
-
-function read() {
+function read(file) {
   const r = []
-  const o = require('./src/server/locales/en.json')
-  magic(o, r, 'r')
+  const o = require(file)
+  magic(o, r, {}, 'r')
 
   r.forEach((l) => {
-    console.log(l);
-    console.log('===')
+    console.log(l)
+    console.log(lineSeparator)
   })
 }
 
-function write() {
+function write(file) {
   const r = []
   const lr = require('readline').createInterface({
     input: require('fs').createReadStream('goog_o.txt')
   })
   lr.on('line', (l) => {
-    if (l !== '===') r.push(s(l))
+    if (l !== lineSeparator) r.push(l)
   })
   lr.on('close', () => {
-    const o = require('./src/server/locales/en.json')
-    magic(o, r, 'w')
+    const o = require(file)
+    const h = {}
+    magic(o, [], h, 'r')
+    magic(o, r, h, 'w')
     console.log(JSON.stringify(o, null, 2))
   })
 }
 
-//read()
-write()
+if (process.argv.length < 4) {
+  console.log('node magic <mode> <file>')
+  process.exit(1)
+}
+
+const file = process.argv[3]
+
+process.argv[2] === readMode ? read(file) : write(file)
